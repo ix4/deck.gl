@@ -1606,4 +1606,4 @@ export const TEST_CASES = [
     ],
     goldenImage: './test/render/golden-images/s2-layer-l2.png'
   }
-].filter(c => c.layers[0] instanceof CPUGridLayer);
+]; //.filter(c => c.layers[0] instanceof HexagonLayer); // || c.name === 'first-person');
