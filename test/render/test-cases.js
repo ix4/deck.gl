@@ -233,81 +233,81 @@ export const TEST_CASES = [
     ],
     goldenImage: './test/render/golden-images/pointcloud-identity.png'
   },
-  {
-    name: 'screengrid-infoviz',
-    views: [new OrthographicView()],
-    viewState: {
-      left: -WIDTH / 2,
-      top: -HEIGHT / 2,
-      right: WIDTH / 2,
-      bottom: HEIGHT / 2
-    },
-    layers: [
-      new ScreenGridLayer({
-        id: 'screengrid-infoviz',
-        data: screenSpaceData,
-        coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
-        getPosition: d => d,
-        cellSizePixels: 40,
-        pickable: false
-      })
-    ],
-    goldenImage: './test/render/golden-images/screengrid-infoviz.png'
-  },
-  {
-    name: 'contour-infoviz',
-    views: [new OrthographicView()],
-    viewState: {
-      left: -WIDTH / 2,
-      top: -HEIGHT / 2,
-      right: WIDTH / 2,
-      bottom: HEIGHT / 2,
-      zoom: 0.1
-    },
-    layers: [
-      new ContourLayer({
-        id: 'contour-infoviz',
-        data: screenSpaceData,
-        getPosition: d => d,
-        coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
-        cellSize: 40,
-        opacity: 1,
-        contours: [
-          {threshold: 1, color: [50, 50, 50]},
-          {threshold: 2, color: [100, 100, 100]},
-          {threshold: 3, color: [150, 150, 150]}
-        ],
-        gpuAggregation: true
-      })
-    ],
-    goldenImage: './test/render/golden-images/contour-infoviz.png'
-  },
-  {
-    name: 'contour-isobands-infoviz',
-    views: [new OrthographicView()],
-    viewState: {
-      left: -WIDTH / 2,
-      top: -HEIGHT / 2,
-      right: WIDTH / 2,
-      bottom: HEIGHT / 2
-    },
-    layers: [
-      new ContourLayer({
-        id: 'contour-isobands-infoviz',
-        data: screenSpaceData,
-        getPosition: d => d,
-        coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
-        cellSize: 40,
-        opacity: 1,
-        contours: [
-          {threshold: [1, 2], color: [150, 0, 0]},
-          {threshold: [2, 5], color: [0, 150, 0]}
-        ],
-        gpuAggregation: false
-      })
-    ],
-    goldenImage: './test/render/golden-images/contour-infoviz_border_ref.png'
-  },
+  // {
+  //   name: 'screengrid-infoviz',
+  //   views: [new OrthographicView()],
+  //   viewState: {
+  //     left: -WIDTH / 2,
+  //     top: -HEIGHT / 2,
+  //     right: WIDTH / 2,
+  //     bottom: HEIGHT / 2
+  //   },
+  //   layers: [
+  //     new ScreenGridLayer({
+  //       id: 'screengrid-infoviz',
+  //       data: screenSpaceData,
+  //       coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+  //       getPosition: d => d,
+  //       cellSizePixels: 40,
+  //       pickable: false
+  //     })
+  //   ],
+  //   goldenImage: './test/render/golden-images/screengrid-infoviz.png'
+  // },
+  // {
+  //   name: 'contour-infoviz',
+  //   views: [new OrthographicView()],
+  //   viewState: {
+  //     left: -WIDTH / 2,
+  //     top: -HEIGHT / 2,
+  //     right: WIDTH / 2,
+  //     bottom: HEIGHT / 2,
+  //     zoom: 0.1
+  //   },
+  //   layers: [
+  //     new ContourLayer({
+  //       id: 'contour-infoviz',
+  //       data: screenSpaceData,
+  //       getPosition: d => d,
+  //       coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+  //       cellSize: 40,
+  //       opacity: 1,
+  //       contours: [
+  //         {threshold: 1, color: [50, 50, 50]},
+  //         {threshold: 2, color: [100, 100, 100]},
+  //         {threshold: 3, color: [150, 150, 150]}
+  //       ],
+  //       gpuAggregation: true
+  //     })
+  //   ],
+  //   goldenImage: './test/render/golden-images/contour-infoviz.png'
+  // },
+  // {
+  //   name: 'contour-isobands-infoviz',
+  //   views: [new OrthographicView()],
+  //   viewState: {
+  //     left: -WIDTH / 2,
+  //     top: -HEIGHT / 2,
+  //     right: WIDTH / 2,
+  //     bottom: HEIGHT / 2
+  //   },
+  //   layers: [
+  //     new ContourLayer({
+  //       id: 'contour-isobands-infoviz',
+  //       data: screenSpaceData,
+  //       getPosition: d => d,
+  //       coordinateSystem: COORDINATE_SYSTEM.IDENTITY,
+  //       cellSize: 40,
+  //       opacity: 1,
+  //       contours: [
+  //         {threshold: [1, 2], color: [150, 0, 0]},
+  //         {threshold: [2, 5], color: [0, 150, 0]}
+  //       ],
+  //       gpuAggregation: false
+  //     })
+  //   ],
+  //   goldenImage: './test/render/golden-images/contour-infoviz_border_ref.png'
+  // },
 
   // GEOSPATIAL
   {
@@ -1273,19 +1273,6 @@ export const TEST_CASES = [
         Object.assign({}, GRID_LAYER_INFO.props, {
           id: 'gpu-grid-lnglat',
           gpuAggregation: true
-        })
-      )
-    ],
-    goldenImage: './test/render/golden-images/gpu-grid-lnglat.png'
-  },
-  {
-    name: 'gpu-grid-lnglat-cpu-aggregation',
-    viewState: GRID_LAYER_INFO.viewState,
-    layers: [
-      new GPUGridLayer(
-        Object.assign({}, GRID_LAYER_INFO.props, {
-          id: 'gpu-grid-lnglat-cpu-aggregation',
-          gpuAggregation: false
         })
       )
     ],

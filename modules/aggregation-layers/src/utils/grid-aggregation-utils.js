@@ -65,7 +65,7 @@ export function pointToDensityGridData({
   });
 
   return {
-    weights: aggregatedData,
+    weights: weightParams, // aggregatedData,
     gridSize: opts.gridSize,
     gridOrigin: opts.gridOrigin,
     cellSize,
@@ -75,7 +75,7 @@ export function pointToDensityGridData({
 
 // Parse input data to build positions, wights and bounding box.
 /* eslint-disable max-statements */
-function getBoundingBox(attributes, vertexCount) {
+export function getBoundingBox(attributes, vertexCount) {
   // TODO - value might not exist (e.g. attribute transition)
   const positions = attributes.positions.value;
 
@@ -113,7 +113,7 @@ function getBoundingBox(attributes, vertexCount) {
  * @returns {yOffset, xOffset} - cellSize size lng/lat (degree) space.
  */
 
-function getGridOffset(boundingBox, cellSize) {
+export function getGridOffset(boundingBox, cellSize) {
   const {yMin, yMax} = boundingBox;
   const latMin = yMin;
   const latMax = yMax;

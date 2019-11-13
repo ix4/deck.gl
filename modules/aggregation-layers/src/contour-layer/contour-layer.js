@@ -24,7 +24,7 @@ import GL from '@luma.gl/constants';
 import {generateContours} from './contour-utils';
 
 import GPUGridAggregator from '../utils/gpu-grid-aggregation/gpu-grid-aggregator';
-import {pointToDensityGridData} from '../utils/gpu-grid-aggregation/grid-aggregation-utils';
+import {getGridOffset} from '../utils/grid-aggregation-utils';
 import GridAggregationLayer from '../grid-aggregation-layer';
 
 const DEFAULT_COLOR = [255, 255, 255, 255];
@@ -37,6 +37,7 @@ const defaultProps = {
   getPosition: {type: 'accessor', value: x => x.position},
   getWeight: {type: 'accessor', value: x => 1},
   gpuAggregation: true,
+  aggregation: 'SUM',
 
   // contour lines
   contours: [{threshold: DEFAULT_THRESHOLD}],
@@ -46,19 +47,21 @@ const defaultProps = {
 };
 
 // props , when changed requires re-aggregation
-const AGGREGATION_PROPS = ['gpuAggregation'];
+const AGGREGATION_PROPS = ['aggregation', 'getWeight'];
 
 export default class ContourLayer extends GridAggregationLayer {
   initializeState() {
-    super.initializeState(AGGREGATION_PROPS);
+    super.initializeState({aggregationProps: AGGREGATION_PROPS});
     this.setState({
       contourData: {},
       colorTrigger: 0,
-      strokeWidthTrigger: 0
+      strokeWidthTrigger: 0,
+      weights: {count: {}}
     });
     const attributeManager = this.getAttributeManager();
     attributeManager.add({
       positions: {size: 3, accessor: 'getPosition', type: GL.DOUBLE, fp64: false},
+      // this attribute is used in gpu aggregation path only
       count: {size: 3, accessor: 'getWeight'}
     });
   }
@@ -109,51 +112,55 @@ export default class ContourLayer extends GridAggregationLayer {
       fp64,
       coordinateSystem
     } = this.props;
-    const {gpuGridAggregator} = this.state;
+    const {/*gpuGridAggregator, */ cpuGridAggregator} = this.state;
 
-    const {weights, gridSize, gridOrigin, cellSize, boundingBox} = pointToDensityGridData({
-      data,
-      cellSizeMeters,
-      weightParams: {count: {getWeight}},
-      gpuAggregation,
-      gpuGridAggregator,
-      fp64,
-      coordinateSystem,
-      viewport: this.context.viewport,
-      boundingBox: this.state.boundingBox, // avoid parsing data when it is not changed.
-      aggregationFlags,
-      vertexCount: this.getNumInstances(),
-      attributes: this.getAttributes(),
-      moduleSettings: this.getModuleSettings()
-    });
+    // const {aggregationBuffer, aggregationData} = this.state;
 
-    this.setState({
-      countsData: weights.count.aggregationData,
-      countsBuffer: weights.count.aggregationBuffer,
-      gridSize,
-      gridOrigin,
-      cellSize,
-      boundingBox
-    });
+
+    // const {weights, gridSize, gridOrigin, cellSize, boundingBox} = pointToDensityGridData({
+    //   data,
+    //   cellSizeMeters,
+    //   weightParams: {count: {getWeight, aggregationBuffer}},
+    //   gpuAggregation,
+    //   gpuGridAggregator: cpuGridAggregator,
+    //   fp64,
+    //   coordinateSystem,
+    //   viewport: this.context.viewport,
+    //   boundingBox: this.state.boundingBox, // avoid parsing data when it is not changed.
+    //   aggregationFlags,
+    //   vertexCount: this.getNumInstances(),
+    //   attributes: this.getAttributes(),
+    //   moduleSettings: this.getModuleSettings()
+    // });
+
+
+    // this.setState({
+    //   countsData: aggregationData,
+    //   countsBuffer: aggregationBuffer
+    //   // gridSize,
+    //   // gridOrigin,
+    //   // cellSize,
+    //   // boundingBox
+    // });
   }
 
   _generateContours() {
-    const {gridSize, gridOrigin, cellSize, thresholdData} = this.state;
-    let {countsData} = this.state;
-    if (!countsData) {
-      const {countsBuffer} = this.state;
-      countsData = countsBuffer.getData();
-      this.setState({countsData});
+    const {numCol, numRow, boundingBox, gridOffset, thresholdData} = this.state;
+    const {count} = this.state.weights;
+    let {aggregationData} = count;
+    if (!aggregationData) {
+      aggregationData = count.aggregationBuffer.getData();
+      count.aggregationData = aggregationData;
     }
 
-    const {cellWeights} = GPUGridAggregator.getCellData({countsData});
+    const {cellWeights} = GPUGridAggregator.getCellData({countsData: aggregationData});
     // const thresholds = this.props.contours.map(x => x.threshold);
     const contourData = generateContours({
       thresholdData,
       cellWeights,
-      gridSize,
-      gridOrigin,
-      cellSize
+      gridSize: [numCol, numRow],
+      gridOrigin: [boundingBox.xMin, boundingBox.yMin],
+      cellSize: [gridOffset.xOffset, gridOffset.yOffset]
     });
 
     // contourData contains both iso-lines and iso-bands if requested.
@@ -231,6 +238,22 @@ export default class ContourLayer extends GridAggregationLayer {
     const thresholds = props.contours.map(x => x.threshold);
 
     return thresholds.some((_, i) => !equals(thresholds[i], oldThresholds[i]));
+  }
+
+  _updateGridParams(opts) {
+    const cellSizeChanged = opts.oldProps.cellSize !== opts.props.cellSize;
+    const aggregationChanged = opts.oldProps.gpuAggregation !== opts.props.gpuAggregation;
+    const {dataChanged} = this.state;
+    this.setState({
+      cellSizeChanged,
+      cellSize: opts.props.cellSize,
+      needsReProjection: dataChanged || cellSizeChanged || aggregationChanged
+    });
+  }
+
+  _getGridOffset() {
+    const {cellSize, boundingBox} = this.state;
+    return getGridOffset(boundingBox, cellSize);
   }
 
   _updateSubLayerTriggers(oldProps, props) {

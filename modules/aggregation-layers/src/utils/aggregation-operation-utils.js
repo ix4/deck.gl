@@ -27,6 +27,7 @@ export const AGGREGATION_OPERATION = {
 
 function sumReducer(accu, cur) {
   return accu + cur;
+  // return cur.map((c, i) => c + accu[i]);
 }
 
 function maxReducer(accu, cur) {
@@ -45,8 +46,10 @@ export function getMean(pts, accessor) {
 
 export function getSum(pts, accessor) {
   const filtered = pts.map(accessor).filter(Number.isFinite);
+  // const filtered = pts.map(accessor).filter(pt => Array.isArray(pt) && Number.isFinite(pt[0]));
 
   return filtered.length ? filtered.reduce(sumReducer, 0) : null;
+  // return filtered.length ? filtered.reduce(sumReducer, [0, 0, 0, 0]) : null;
 }
 
 export function getMax(pts, accessor) {

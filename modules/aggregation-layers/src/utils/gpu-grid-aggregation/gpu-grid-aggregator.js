@@ -480,6 +480,7 @@ export default class GPUGridAggregator {
 
   /* eslint-disable max-statements */
   runAggregationOnCPU(opts) {
+    log.assert(false);
     const {
       attributes,
       vertexCount,
@@ -948,7 +949,7 @@ export default class GPUGridAggregator {
 
   /* eslint-disable max-statements */
   updateModels(opts) {
-    const {changeFlags, vertexCount, attributes} = opts;
+    const {vertexCount, attributes} = opts;
     const {numCol, numRow, modelDirty} = this.state;
 
     if (opts.fp64 !== this.state.fp64 || modelDirty) {
@@ -962,9 +963,9 @@ export default class GPUGridAggregator {
     this.gridAggregationModel.setVertexCount(vertexCount);
     this.gridAggregationModel.setAttributes(attributes);
 
-    if (changeFlags.cellSizeChanged || changeFlags.viewportChanged) {
+    // if (changeFlags.cellSizeChanged || changeFlags.viewportChanged) {
       this.allAggregationModel.setInstanceCount(numCol * numRow);
-    }
+    //}
   }
   /* eslint-enable max-statements */
 
@@ -993,6 +994,7 @@ function deleteResources(resources) {
 }
 
 function shouldTransformToGrid(opts) {
+  log.assert(false);
   const {projectPoints, changeFlags} = opts;
   if (
     changeFlags.dataChanged ||

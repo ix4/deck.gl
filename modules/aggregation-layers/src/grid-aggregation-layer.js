@@ -20,14 +20,97 @@
 
 import AggregationLayer from './aggregation-layer';
 import GPUGridAggregator from './utils/gpu-grid-aggregation/gpu-grid-aggregator';
+import {AGGREGATION_OPERATION} from './utils/aggregation-operation-utils';
+// import CPUGridAggregator from './utils/cpu-grid-aggregator';
+import {Buffer} from '@luma.gl/core';
+import {WebMercatorViewport, log} from '@deck.gl/core';
+import GL from '@luma.gl/constants';
+import {Matrix4} from 'math.gl';
+import {getBoundingBox} from './utils/grid-aggregation-utils';
+import {getValueFunc} from './utils/aggregation-operation-utils';
+import BinSorter from './utils/bin-sorter';
+import {pointToDensityGridDataCPU} from './cpu-grid-layer/grid-aggregator';
 
+// // these default dimensions serve ContourLayer and ScreenGridLayer
+// const DIMENSIONS = [
+//   {
+//     key: 'fillColor',
+//     accessor: 'getFillColor',
+//     pickingInfo: 'colorValue',
+//     getBins: {
+//       sort: false,
+//       triggers: {
+//         value: {
+//           prop: 'getValue',
+//           updateTrigger: 'getValue'
+//         },
+//         weight: {
+//           prop: 'getWeight',
+//           updateTrigger: 'getWeight'
+//         },
+//         aggregation: {
+//           prop: 'aggregation'
+//         }
+//       }
+//     },
+//   }
+// ];
 export default class GridAggregationLayer extends AggregationLayer {
-  initializeState(aggregationProps) {
+  // TODO remove all dimension releated stuff
+  // just check for aggregation and getWeight props to generate bins
+  //
+  // if cpu aggregation
+  //   if data/cellsize/aggregation-props/viewport changed
+  //       generate position bins
+  //   if aggregation/getWeight/data filter props changed
+  //       update bins weights
+  // if gpu aggregation
+  //   for above both cases, re-run aggregation
+
+  // TODO: need to fix all callers of this method
+  initializeState({aggregationProps, getCellSize}) {
     const {gl} = this.context;
     super.initializeState(aggregationProps);
     this.setState({
-      gpuGridAggregator: new GPUGridAggregator(gl, {id: `${this.id}-gpu-aggregator`})
+      // CPU aggregation results
+      layerData: {},
+      gpuGridAggregator: new GPUGridAggregator(gl, {id: `${this.id}-gpu-aggregator`}),
+      cpuGridAggregator: pointToDensityGridDataCPU
     });
+  }
+
+  updateState(opts) {
+    const {gpuAggregation} = opts.props;
+    // will get new attributes
+    super.updateState(opts);
+
+    // update bounding box and cellSize
+    this._updateGridState(opts);
+
+    // const reprojectNeeded = this._needsReProjectPoints(oldProps, props, changeFlags);
+    // const {dataChanged, cellSizeChanged} = this.state;
+    let aggregationDirty = false;
+    const {needsReProjection} = this.state;
+    const needsReAggregation = this._isAggregationDirty(opts);
+    const vertexCount = this.getNumInstances();
+    if (vertexCount <= 0) {
+      return;
+    }
+    if (needsReProjection || (gpuAggregation && needsReAggregation)) {
+      this._updateAccessors(opts);
+      this._resetResults();
+      this.getAggregatedData(opts);
+      aggregationDirty = true;
+    }
+    if (!gpuAggregation && (aggregationDirty || needsReAggregation)) {
+      // In case of CPU aggregation
+      this._resetResults();
+      this.updateWeightBins();
+      this.uploadAggregationResults();
+      aggregationDirty = true;
+    }
+
+    this.setState({aggregationDirty});
   }
 
   finalizeState() {
@@ -38,12 +121,337 @@ export default class GridAggregationLayer extends AggregationLayer {
     }
   }
 
+  // Private
+
+  _updateGridState(opts) {
+    this._updateGridParams(opts);
+    const {viewport} = this.context;
+    const {dataChanged, cellSizeChanged, screenSpaceAggregation} = this.state;
+    if (dataChanged && !screenSpaceAggregation) {
+      const boundingBox = getBoundingBox(this.getAttributes(), this.getNumInstances());
+      this.setState({boundingBox});
+    }
+    if (dataChanged || cellSizeChanged) {
+      // for grid contour layers transform cellSize from meters to lng/lat offsets
+      const gridOffset = this._getGridOffset();
+      this.setState({gridOffset});
+
+      let {width, height} = this.context.viewport;
+      let gridTransformMatrix = new Matrix4();
+      let cellOffset = [0, 0];
+      let projectPoints = false;
+
+      if (screenSpaceAggregation) {
+        if (viewport instanceof WebMercatorViewport) {
+          // project points from world space (lng/lat) to viewport (screen) space.
+          projectPoints = true;
+        } else {
+          // Support Ortho viewport use cases.
+          projectPoints = false;
+          // Use pixelProjectionMatrix to transform points to viewport (screen) space.
+          gridTransformMatrix = viewport.pixelProjectionMatrix;
+        }
+
+        gridTransformMatrix = viewport.pixelProjectionMatrix;
+      } else {
+        const {xMin, yMin, xMax, yMax} = this.state.boundingBox;
+        width = xMax - xMin + gridOffset.xOffset;
+        height = yMax - yMin + gridOffset.yOffset;
+
+        // Setup transformation matrix so that every point is in +ve range
+        gridTransformMatrix = gridTransformMatrix.translate([-1 * xMin, -1 * yMin, 0]);
+        cellOffset = [-1 * xMin, -1 * yMin];
+        projectPoints = false;
+      }
+      const numCol = Math.ceil(width / gridOffset.xOffset);
+      const numRow = Math.ceil(height / gridOffset.yOffset);
+      this._allocateResources(numRow, numCol);
+      this.setState({gridTransformMatrix, projectPoints, width, height, cellOffset, numCol, numRow});
+    }
+  }
+
+  getAggregatedData(opts) {
+    const {gpuAggregation} = opts.props;
+    const {
+      cpuGridAggregator,
+      gpuGridAggregator,
+      cellSize,
+      gridOffset,
+      cellOffset,
+      gridTransformMatrix,
+      width,
+      height,
+      boundingBox,
+      screenSpaceAggregation,
+      projectPoints
+    } = this.state;
+    const {props} = opts;
+    const {viewport} = this.context;
+    const attributes = this.getAttributes();
+    // const projectPoints = false; // _TODO_ cleanup
+    const vertexCount = this.getNumInstances();
+
+    // TODO verify CPU aggregation path first.
+
+    if (!gpuAggregation) {
+      const result = cpuGridAggregator({
+        data: props.data,
+        cellSize,
+        attributes,
+        viewport,
+        projectPoints,
+        gridTransformMatrix,
+        width,
+        height,
+        gridOffset,
+        cellOffset,
+        boundingBox
+      });
+      this.setState({
+        layerData: result
+      });
+    } else {
+      const {weights} = this.state;
+      gpuGridAggregator.run({
+        weights,
+        cellSize: [gridOffset.xOffset, gridOffset.yOffset],
+        width,
+        height,
+        gridTransformMatrix,
+        useGPU: true, // _TODO_ delete this option in gpu aggregator
+        vertexCount, // : vertexCount / 2,
+        projectPoints,
+        attributes,
+        moduleSettings: this.getModuleSettings()
+      });
+    }
+  }
+
+  // getSortedBins(props) {
+  //   for (const key in this.dimensionUpdaters) {
+  //     this.getDimensionSortedBins(props, this.dimensionUpdaters[key]);
+  //   }
+  // }
+
+  updateWeightBins() {
+    // const {getColorValue} = this.state;
+    const {getValue} = this.state;
+
+    const sortedBins = new BinSorter(this.state.layerData.data || [], getValue, false);
+    this.setState({sortedBins});
+  }
+
+  uploadAggregationResults() {
+    const {numCol, numRow} = this.state;
+    const {data} = this.state.layerData;
+    const {sortedBins, minValue, maxValue, totalCount} = this.state.sortedBins;
+
+    const ELEMENTCOUNT = 4;
+    const aggregationSize = numCol * numRow * ELEMENTCOUNT;
+    const aggregationData = new Float32Array(aggregationSize).fill(0);
+    for (const bin of sortedBins) {
+      const {lonIdx, latIdx} = data[bin.i];
+      const {value, counts} = bin;
+      // TODO this calculation need to be updated for ContourLaYER
+      const cellIndex = (lonIdx + latIdx * numCol) * ELEMENTCOUNT;
+      aggregationData[cellIndex] = value;
+      aggregationData[cellIndex + ELEMENTCOUNT - 1] = counts;
+    }
+    const maxMinData = new Float32Array([maxValue, 0, 0, minValue]);
+    const maxData = new Float32Array([maxValue, 0, 0, totalCount]);
+    const minData = new Float32Array([minValue, 0, 0, totalCount]);
+    // aggregationBuffer.setData({data: aggregationData});
+    this._updateResults({aggregationData, maxMinData, maxData, minData});
+  }
+
+  // _updateCustomDimensions(props, dimensionUpdater) {
+  //   // Sub classes can update their custom dimensions
+  // }
+
+  // Private
+  _allocateResources(numRow, numCol) {
+    if (this.state.numRow !== numRow || this.state.numCol !== numCol) {
+      const {count} = this.state.weights;
+      const dataBytes = numCol * numRow * 4 * 4;
+      if (count.aggregationBuffer) {
+        count.aggregationBuffer.delete();
+      }
+      count.aggregationBuffer = new Buffer(this.context.gl, {
+        byteLength: dataBytes,
+        accessor: {
+          size: 4,
+          type: GL.FLOAT,
+          divisor: 1
+        }
+      });
+    }
+  }
+
+  _resetResults() {
+    const {count} = this.state.weights;
+    if (count) {
+      count.aggregationData = null;
+    }
+  }
+
+  _updateResults({aggregationData}) {
+    const {count} = this.state.weights;
+    if (count) {
+      count.aggregationData = aggregationData;
+    }
+  }
+
+  _updateAccessors(opts) {
+    if (opts.props.gpuAggregation) {
+      this._updateWeightParams(opts);
+    } else {
+      this._updateGetValueFuncs(opts);
+    }
+  }
+
+  _updateWeightParams(opts) {
+    const {
+      getWeight,
+      aggregation
+    } = opts.props;
+    const {count} = this.state.weights;
+    count.getWeight = getWeight;
+    count.aggregation = AGGREGATION_OPERATION[aggregation];
+  }
+
+  _updateGetValueFuncs({oldProps, props, changeFlags}) {
+    const {getValue} = this.state;
+    if (
+      !getValue ||
+      oldProps.aggregation !== props.aggregation ||
+      (changeFlags.updateTriggersChanged &&
+        (changeFlags.updateTriggersChanged.all || changeFlags.updateTriggersChanged.getWeight))
+    ) {
+      this.setState({getValue: getValueFunc(props.aggregation, props.getWeight)});
+    }
+  }
+
+  // _needsReProjectPoints(oldProps, props, changeFlags) {
+  //   return (
+  //     this._getCellSize(oldProps) !== this._getCellSize(props) ||
+  //     this._getAggregator(oldProps) !== this._getAggregator(props) ||
+  //     (changeFlags.updateTriggersChanged &&
+  //       (changeFlags.updateTriggersChanged.all || changeFlags.updateTriggersChanged.getPosition))
+  //   );
+  // }
+  //
+  // getDimensionUpdaters({key, accessor, pickingInfo, getBins, getDomain, getScaleFunc, nullValue}) {
+  //   return {
+  //     key,
+  //     accessor,
+  //     pickingInfo,
+  //     getBins: Object.assign({updater: this.getDimensionSortedBins}, getBins),
+  //     getDomain: getDomain && Object.assign({updater: this.getDimensionValueDomain}, getDomain),
+  //     getScaleFunc: getScaleFunc && Object.assign({updater: this.getDimensionScale}, getScaleFunc),
+  //     attributeAccessor: this.getSubLayerDimensionAttribute(key, nullValue)
+  //   };
+  // }
+  //
+  // needUpdateDimensionStep(dimensionStep, oldProps, props, changeFlags) {
+  //   // whether need to update current dimension step
+  //   // dimension step is the value, domain, scaleFunction of each dimension
+  //   // each step is an object with properties links to layer prop and whether the prop is
+  //   // controlled by updateTriggers
+  //   // getBins: {
+  //   //   value: {
+  //   //     prop: 'getElevationValue',
+  //   //     updateTrigger: 'getElevationValue'
+  //   //   },
+  //   //   weight: {
+  //   //     prop: 'getElevationWeight',
+  //   //     updateTrigger: 'getElevationWeight'
+  //   //   },
+  //   //   aggregation: {
+  //   //     prop: 'elevationAggregation'
+  //   //   }
+  //   // }
+  //   return Object.values(dimensionStep.triggers).some(item => {
+  //     if (item.updateTrigger) {
+  //       // check based on updateTriggers change first
+  //       return (
+  //         changeFlags.updateTriggersChanged &&
+  //         (changeFlags.updateTriggersChanged.all ||
+  //           changeFlags.updateTriggersChanged[item.updateTrigger])
+  //       );
+  //     }
+  //     // fallback to direct comparison
+  //     return oldProps[item.prop] !== props[item.prop];
+  //   });
+  // }
+  //
+  // getDimensionChanges(oldProps, props, changeFlags) {
+  //   // const {dimensionUpdaters} = this.state;
+  //   const updaters = [];
+  //
+  //   // get dimension to be updated
+  //   for (const key in this.dimensionUpdaters) {
+  //     // return the first triggered updater for each dimension
+  //     const needUpdate = dimensionSteps.find(step =>
+  //       this.needUpdateDimensionStep(
+  //         this.dimensionUpdaters[key][step],
+  //         oldProps,
+  //         props,
+  //         changeFlags
+  //       )
+  //     );
+  //
+  //     if (needUpdate) {
+  //       updaters.push(
+  //         this.dimensionUpdaters[key][needUpdate].updater.bind(
+  //           this,
+  //           props,
+  //           this.dimensionUpdaters[key]
+  //         )
+  //       );
+  //     }
+  //   }
+  //
+  //   return updaters.length ? updaters : null;
+  // }
+  //
+  // // Update private state.dimensions
+  // setDimensionState(key, updateObject) {
+  //   this.setState({
+  //     dimensions: Object.assign({}, this.state.dimensions, {
+  //       [key]: Object.assign({}, this.state.dimensions[key], updateObject)
+  //     })
+  //   });
+  // }
+  //
+  // _addDimension(dimensions = []) {
+  //   dimensions.forEach(dimension => {
+  //     const {key} = dimension;
+  //     this.dimensionUpdaters[key] = this.getDimensionUpdaters(dimension);
+  //     this.state.dimensions[key] = {
+  //       getValue: null,
+  //       domain: null,
+  //       sortedBins: null,
+  //       scaleFunc: nop
+  //     };
+  //   });
+  // }
+
   _updateShaders(shaders) {
     this.state.gpuGridAggregator.updateShaders(shaders);
   }
 
   _getAggregationModel() {
     return this.state.gpuGridAggregator.gridAggregationModel;
+  }
+
+  _getGridOffset() {
+    const cellSize = this.state.cellSize;
+    return {xOffset: cellSize, yOffset: cellSize};
+  }
+
+  _updateGridParams(opts) {
+    // Sublayers should implement this method.
+    log.assert(false)();
   }
 }
 
