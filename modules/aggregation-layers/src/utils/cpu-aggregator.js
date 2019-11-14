@@ -51,6 +51,9 @@ const defaultDimensions = [
         },
         upperPercentile: {
           prop: 'upperPercentile'
+        },
+        scaleType: {
+          prop: 'colorScaleType'
         }
       },
       onSet: {
@@ -60,8 +63,7 @@ const defaultDimensions = [
     getScaleFunc: {
       triggers: {
         domain: {prop: 'colorDomain'},
-        range: {prop: 'colorRange'},
-        scaleType: {prop: 'colorScaleType'}
+        range: {prop: 'colorRange'}
       }
     },
     nullValue: [0, 0, 0, 0]
@@ -92,6 +94,9 @@ const defaultDimensions = [
         },
         upperPercentile: {
           prop: 'elevationUpperPercentile'
+        },
+        scaleType: {
+          prop: 'elevationScaleType'
         }
       },
       onSet: {
@@ -101,8 +106,7 @@ const defaultDimensions = [
     getScaleFunc: {
       triggers: {
         domain: {prop: 'elevationDomain'},
-        range: {prop: 'elevationRange'},
-        scaleType: {prop: 'elevationScaleType'}
+        range: {prop: 'elevationRange'}
       }
     },
     nullValue: -1
@@ -377,7 +381,6 @@ export default class CPUAggregator {
   }
 
   getDimensionSortedBins(props, dimensionUpdater) {
-    // const {getColorValue} = this.state;
     const {key} = dimensionUpdater;
     const {getValue} = this.state.dimensions[key];
 
@@ -389,13 +392,13 @@ export default class CPUAggregator {
   getDimensionValueDomain(props, dimensionUpdater) {
     const {getDomain, key} = dimensionUpdater;
     const {
-      triggers: {lowerPercentile, upperPercentile},
+      triggers: {lowerPercentile, upperPercentile, scaleType},
       onSet
     } = getDomain;
-    const valueDomain = this.state.dimensions[key].sortedBins.getValueRange([
-      props[lowerPercentile.prop],
-      props[upperPercentile.prop]
-    ]);
+    const valueDomain = this.state.dimensions[key].sortedBins.getValueDomainByScale(
+      props[scaleType.prop],
+      [props[lowerPercentile.prop], props[upperPercentile.prop]]
+    );
 
     if (typeof onSet === 'object' && typeof props[onSet.props] === 'function') {
       props[onSet.props](valueDomain);
@@ -406,9 +409,10 @@ export default class CPUAggregator {
   }
 
   getDimensionScale(props, dimensionUpdater) {
-    const {key, getScaleFunc} = dimensionUpdater;
-    const {domain, range, scaleType} = getScaleFunc.triggers;
-    // const {colorRange} = key;
+    const {key, getScaleFunc, getDomain} = dimensionUpdater;
+    const {domain, range} = getScaleFunc.triggers;
+    const {scaleType} = getDomain.triggers;
+
     const dimensionRange = props[range.prop];
     const dimensionDomain = props[domain.prop] || this.state.dimensions[key].valueDomain;
     const getScaleFunction = this.getScaleFunctionByScaleType(props[scaleType.prop]);
@@ -420,8 +424,13 @@ export default class CPUAggregator {
   getSubLayerDimensionAttribute(key, nullValue) {
     return cell => {
       const {sortedBins, scaleFunc} = this.state.dimensions[key];
+      const bin = sortedBins.binMap[cell.index];
 
-      const cv = sortedBins.binMap[cell.index] && sortedBins.binMap[cell.index].value;
+      if (bin && bin.counts === 0) {
+        // no points left in bin after filtering
+        return nullValue;
+      }
+      const cv = bin && bin.value;
       const domain = scaleFunc.domain();
 
       const isValueInDomain = cv >= domain[0] && cv <= domain[domain.length - 1];
