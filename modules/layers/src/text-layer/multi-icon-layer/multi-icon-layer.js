@@ -29,6 +29,7 @@ const DEFAULT_GAMMA = 0.2;
 const DEFAULT_BUFFER = 192.0 / 256;
 
 const defaultProps = {
+  transparentColor: {type: 'color', value: [0, 0, 0, 0]},
   // each paragraph can have one or multiple row(s)
   // each row can have one or multiple character(s)
   getRowSize: {type: 'accessor', value: x => x.rowSize || [0, 0]},
@@ -85,14 +86,15 @@ export default class MultiIconLayer extends IconLayer {
   }
 
   draw({uniforms}) {
-    const {sdf} = this.props;
+    const {sdf, transparentColor} = this.props;
     super.draw({
       uniforms: Object.assign({}, uniforms, {
         // Refer the following doc about gamma and buffer
         // https://blog.mapbox.com/drawing-text-with-signed-distance-fields-in-mapbox-gl-b0933af6f817
         buffer: DEFAULT_BUFFER,
         gamma: DEFAULT_GAMMA,
-        sdf: Boolean(sdf)
+        sdf: Boolean(sdf),
+        transparentColor: transparentColor.map(c => c / 255.0)
       })
     });
   }
