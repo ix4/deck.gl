@@ -18,7 +18,7 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
-import {WebMercatorViewport, log} from '@deck.gl/core';
+import {log} from '@deck.gl/core';
 import GPUGridAggregator from '../utils/gpu-grid-aggregation/gpu-grid-aggregator';
 import {AGGREGATION_OPERATION} from '../utils/aggregation-operation-utils';
 import ScreenGridCellLayer from './screen-grid-cell-layer';
@@ -26,7 +26,6 @@ import GridAggregationLayer from '../grid-aggregation-layer';
 import {getFloatTexture} from '../utils/resource-utils.js';
 
 import GL from '@luma.gl/constants';
-import {Buffer} from '@luma.gl/core';
 
 const defaultProps = Object.assign({}, ScreenGridCellLayer.defaultProps, {
   getPosition: {type: 'accessor', value: d => d.position},
@@ -81,23 +80,6 @@ export default class ScreenGridLayer extends GridAggregationLayer {
 
   updateState(opts) {
     super.updateState(opts);
-    /*
-    const cellSizeChanged = opts.props.cellSizePixels !== opts.oldProps.cellSizePixels;
-    const dataChanged = this._isAggregationDirty(opts);
-    const {viewportChanged} = opts.changeFlags;
-
-    if (cellSizeChanged || viewportChanged) {
-      this._updateGridParams();
-    }
-
-    if (dataChanged || cellSizeChanged || viewportChanged) {
-      this._updateAggregation({
-        dataChanged,
-        cellSizeChanged,
-        viewportChanged
-      });
-    }
-    */
   }
 
   renderLayers() {
@@ -180,47 +162,6 @@ export default class ScreenGridLayer extends GridAggregationLayer {
   }
 
 
-  // _updateAggregation(changeFlags) {
-  //
-  //   const vertexCount = this.getNumInstances();
-  //   if (vertexCount <= 0) {
-  //     return;
-  //   }
-  //
-  //   const {cellSizePixels, gpuAggregation} = this.props;
-  //
-  //   const {weights} = this.state;
-  //   const {viewport} = this.context;
-  //
-  //   weights.count.operation =
-  //     AGGREGATION_OPERATION[this.props.aggregation.toUpperCase()] || AGGREGATION_OPERATION.SUM;
-  //
-  //   let projectPoints = false;
-  //   let gridTransformMatrix = null;
-  //
-  //   if (this.context.viewport instanceof WebMercatorViewport) {
-  //     // project points from world space (lng/lat) to viewport (screen) space.
-  //     projectPoints = true;
-  //   } else {
-  //     projectPoints = false;
-  //     // Use pixelProjectionMatrix to transform points to viewport (screen) space.
-  //     gridTransformMatrix = viewport.pixelProjectionMatrix;
-  //   }
-  //   const aggregator = this.state.cpuGridAggregator;
-  //   const results = aggregator.run({
-  //     weights,
-  //     cellSize: [cellSizePixels, cellSizePixels],
-  //     viewport,
-  //     changeFlags,
-  //     useGPU: gpuAggregation,
-  //     projectPoints,
-  //     gridTransformMatrix,
-  //     vertexCount,
-  //     attributes: this.getAttributes(),
-  //     moduleSettings: this.getModuleSettings()
-  //   });
-  // }
-
   _updateGridParams(opts) {
     const cellSizeChanged = opts.oldProps.cellSizePixels !== opts.props.cellSizePixels;
     const aggregationChanged = opts.oldProps.gpuAggregation !== opts.props.gpuAggregation;
@@ -236,36 +177,6 @@ export default class ScreenGridLayer extends GridAggregationLayer {
     const {cellSize} = this.state;
     return {xOffset: cellSize, yOffset: cellSize};
   }
-
-  // _updateGridParams() {
-  //   const {width, height} = this.context.viewport;
-  //   const {cellSizePixels} = this.props;
-  //   const {gl} = this.context;
-  //
-  //   const numCol = Math.ceil(width / cellSizePixels);
-  //   const numRow = Math.ceil(height / cellSizePixels);
-  //   const cellCount = numCol * numRow;
-  //   const dataBytes = cellCount * 4 * 4;
-  //   let aggregationBuffer = this.state.aggregationBuffer;
-  //   if (aggregationBuffer) {
-  //     aggregationBuffer.delete();
-  //   }
-  //
-  //   aggregationBuffer = new Buffer(gl, {
-  //     byteLength: dataBytes,
-  //     accessor: {
-  //       size: 4,
-  //       type: GL.FLOAT,
-  //       divisor: 1
-  //     }
-  //   });
-  //   this.state.weights.count.aggregationBuffer = aggregationBuffer;
-  //   this.state.subLayerData.attributes.instanceCounts = aggregationBuffer;
-  //   this.setState({
-  //     cellCount,
-  //     aggregationBuffer
-  //   });
-  // }
 }
 
 ScreenGridLayer.layerName = 'ScreenGridLayer';

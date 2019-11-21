@@ -69,20 +69,12 @@ export default class ContourLayer extends GridAggregationLayer {
   updateState(opts) {
     super.updateState(opts);
     let contoursChanged = false;
-    const dataChanged = this._isAggregationDirty(opts);
-    const cellSizeChanged = opts.oldProps.cellSize !== opts.props.cellSize;
-    if (dataChanged || cellSizeChanged) {
-      this.setState({countsData: null});
-      this._aggregateData({
-        dataChanged,
-        cellSizeChanged
-      });
-    }
+    const {aggregationDirty} = this.state;
     if (this._shouldRebuildContours(opts)) {
       contoursChanged = true;
       this._updateThresholdData(opts.props);
     }
-    if (dataChanged || cellSizeChanged || contoursChanged) {
+    if (aggregationDirty || contoursChanged) {
       this._generateContours();
     } else {
       // data for sublayers not changed check if color or strokeWidth need to be updated
@@ -102,47 +94,6 @@ export default class ContourLayer extends GridAggregationLayer {
   }
 
   // Private
-
-  _aggregateData(aggregationFlags) {
-    const {
-      data,
-      cellSize: cellSizeMeters,
-      getWeight,
-      gpuAggregation,
-      fp64,
-      coordinateSystem
-    } = this.props;
-    const {/*gpuGridAggregator, */ cpuGridAggregator} = this.state;
-
-    // const {aggregationBuffer, aggregationData} = this.state;
-
-
-    // const {weights, gridSize, gridOrigin, cellSize, boundingBox} = pointToDensityGridData({
-    //   data,
-    //   cellSizeMeters,
-    //   weightParams: {count: {getWeight, aggregationBuffer}},
-    //   gpuAggregation,
-    //   gpuGridAggregator: cpuGridAggregator,
-    //   fp64,
-    //   coordinateSystem,
-    //   viewport: this.context.viewport,
-    //   boundingBox: this.state.boundingBox, // avoid parsing data when it is not changed.
-    //   aggregationFlags,
-    //   vertexCount: this.getNumInstances(),
-    //   attributes: this.getAttributes(),
-    //   moduleSettings: this.getModuleSettings()
-    // });
-
-
-    // this.setState({
-    //   countsData: aggregationData,
-    //   countsBuffer: aggregationBuffer
-    //   // gridSize,
-    //   // gridOrigin,
-    //   // cellSize,
-    //   // boundingBox
-    // });
-  }
 
   _generateContours() {
     const {numCol, numRow, boundingBox, gridOffset, thresholdData} = this.state;

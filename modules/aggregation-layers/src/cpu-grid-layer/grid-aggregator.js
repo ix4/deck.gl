@@ -30,7 +30,6 @@ const R_EARTH = 6378000;
  * @returns {object} - grid data, cell dimension
  */
 export function pointToDensityGridDataCPU(opts) {
-  // const {data, cellSize, attributes, viewport, projectPoints} = opts;
   const hashInfo = _pointsToGridHashing(opts);
   const result = _getGridLayerDataFromGridHash(hashInfo);
 
@@ -83,6 +82,7 @@ function _pointsToGridHashing(opts) {
     let latMin = Infinity;
     let latMax = -Infinity;
     let pLat;
+    // eslint-disable-next-line no-unused-vars
     for (const pt of iterable) {
       objectInfo.index++;
       pLat = positions[objectInfo.index * posSize + 1];
@@ -95,7 +95,6 @@ function _pointsToGridHashing(opts) {
     boundingBox = {yMin: latMin, yMax: latMax};
   }
 
-
   const offsets = opts.cellOffset || [180, 90];
   let gridOffset = opts.gridOffset;
   if (!gridOffset) {
@@ -105,7 +104,6 @@ function _pointsToGridHashing(opts) {
   if (gridOffset.xOffset <= 0 || gridOffset.yOffset <= 0) {
     return {gridHash: {}, gridOffset};
   }
-
 
   // calculate count per cell
   const gridHash = {};

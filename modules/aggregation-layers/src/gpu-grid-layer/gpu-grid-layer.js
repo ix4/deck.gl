@@ -24,7 +24,6 @@ import {log} from '@deck.gl/core';
 
 import GPUGridAggregator from '../utils/gpu-grid-aggregation/gpu-grid-aggregator';
 import {AGGREGATION_OPERATION} from '../utils/aggregation-operation-utils';
-// import {pointToDensityGridData} from '../utils/grid-aggregation-utils';
 import {defaultColorRange, colorRangeToFlatArray} from '../utils/color-utils';
 import GPUGridCellLayer from './gpu-grid-cell-layer';
 import {pointToDensityGridDataCPU} from './../cpu-grid-layer/grid-aggregator';
@@ -109,13 +108,6 @@ export default class GPUGridLayer extends GridAggregationLayer {
       return;
     }
     super.updateState(opts);
-    // const dataChanged = this._isAggregationDirty(opts);
-    // const cellSizeChanged = opts.oldProps.cellSize !== opts.props.cellSize;
-    // if (dataChanged || cellSizeChanged) {
-    //   this._aggregateData({
-    //     dataChanged,
-    //     cellSizeChanged
-    //   });
     const {aggregationDirty} = this.state;
     if (aggregationDirty) {
       // reset cached CPU Aggregation results (used for picking)
@@ -189,33 +181,6 @@ export default class GPUGridLayer extends GridAggregationLayer {
       object
     });
   }
-
-  // _aggregateData(aggregationFlags) {
-  //   const {
-  //     data,
-  //     cellSize: cellSizeMeters,
-  //     gpuAggregation,
-  //     getColorWeight,
-  //     colorAggregation,
-  //     getElevationWeight,
-  //     elevationAggregation,
-  //     fp64
-  //   } = this.props;
-  //   const {weights, gridSize, gridOrigin, cellSize, boundingBox} = pointToDensityGridData({
-  //     data,
-  //     cellSizeMeters,
-  //     weightParams,
-  //     gpuAggregation,
-  //     gpuGridAggregator: this.state.gpuGridAggregator,
-  //     boundingBox: this.state.boundingBox, // avoid parsing data when it is not changed.
-  //     aggregationFlags,
-  //     fp64,
-  //     vertexCount: this.getNumInstances(),
-  //     attributes: this.getAttributes(),
-  //     moduleSettings: this.getModuleSettings()
-  //   });
-  //   this.setState({weights, gridSize, gridOrigin, cellSize, boundingBox});
-  // }
 
   renderLayers() {
     if (!this.state.isSupported) {

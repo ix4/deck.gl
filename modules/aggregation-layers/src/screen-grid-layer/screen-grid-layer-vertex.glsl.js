@@ -62,7 +62,7 @@ void main(void) {
   vSampleCount = instanceCounts.a;
 
   float weight = instanceCounts.r;
-  float maxWeight = 100.;//texture2D(maxTexture, vec2(0.5)).r;
+  float maxWeight = texture2D(maxTexture, vec2(0.5)).r;
 
   float step = weight / maxWeight;
   vec4 minMaxColor = mix(minColor, maxColor, step) / 255.;

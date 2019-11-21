@@ -21,7 +21,6 @@
 import AggregationLayer from './aggregation-layer';
 import GPUGridAggregator from './utils/gpu-grid-aggregation/gpu-grid-aggregator';
 import {AGGREGATION_OPERATION} from './utils/aggregation-operation-utils';
-// import CPUGridAggregator from './utils/cpu-grid-aggregator';
 import {Buffer} from '@luma.gl/core';
 import {WebMercatorViewport, log} from '@deck.gl/core';
 import GL from '@luma.gl/constants';
@@ -31,43 +30,7 @@ import {getValueFunc} from './utils/aggregation-operation-utils';
 import BinSorter from './utils/bin-sorter';
 import {pointToDensityGridDataCPU} from './cpu-grid-layer/grid-aggregator';
 
-// // these default dimensions serve ContourLayer and ScreenGridLayer
-// const DIMENSIONS = [
-//   {
-//     key: 'fillColor',
-//     accessor: 'getFillColor',
-//     pickingInfo: 'colorValue',
-//     getBins: {
-//       sort: false,
-//       triggers: {
-//         value: {
-//           prop: 'getValue',
-//           updateTrigger: 'getValue'
-//         },
-//         weight: {
-//           prop: 'getWeight',
-//           updateTrigger: 'getWeight'
-//         },
-//         aggregation: {
-//           prop: 'aggregation'
-//         }
-//       }
-//     },
-//   }
-// ];
 export default class GridAggregationLayer extends AggregationLayer {
-  // TODO remove all dimension releated stuff
-  // just check for aggregation and getWeight props to generate bins
-  //
-  // if cpu aggregation
-  //   if data/cellsize/aggregation-props/viewport changed
-  //       generate position bins
-  //   if aggregation/getWeight/data filter props changed
-  //       update bins weights
-  // if gpu aggregation
-  //   for above both cases, re-run aggregation
-
-  // TODO: need to fix all callers of this method
   initializeState({aggregationProps, getCellSize}) {
     const {gl} = this.context;
     super.initializeState(aggregationProps);
@@ -87,8 +50,6 @@ export default class GridAggregationLayer extends AggregationLayer {
     // update bounding box and cellSize
     this._updateGridState(opts);
 
-    // const reprojectNeeded = this._needsReProjectPoints(oldProps, props, changeFlags);
-    // const {dataChanged, cellSizeChanged} = this.state;
     let aggregationDirty = false;
     const {needsReProjection} = this.state;
     const needsReAggregation = this._isAggregationDirty(opts);
@@ -151,8 +112,6 @@ export default class GridAggregationLayer extends AggregationLayer {
           // Use pixelProjectionMatrix to transform points to viewport (screen) space.
           gridTransformMatrix = viewport.pixelProjectionMatrix;
         }
-
-        gridTransformMatrix = viewport.pixelProjectionMatrix;
       } else {
         const {xMin, yMin, xMax, yMax} = this.state.boundingBox;
         width = xMax - xMin + gridOffset.xOffset;
@@ -182,7 +141,6 @@ export default class GridAggregationLayer extends AggregationLayer {
       width,
       height,
       boundingBox,
-      screenSpaceAggregation,
       projectPoints
     } = this.state;
     const {props} = opts;
@@ -227,14 +185,7 @@ export default class GridAggregationLayer extends AggregationLayer {
     }
   }
 
-  // getSortedBins(props) {
-  //   for (const key in this.dimensionUpdaters) {
-  //     this.getDimensionSortedBins(props, this.dimensionUpdaters[key]);
-  //   }
-  // }
-
   updateWeightBins() {
-    // const {getColorValue} = this.state;
     const {getValue} = this.state;
 
     const sortedBins = new BinSorter(this.state.layerData.data || [], getValue, false);
@@ -263,10 +214,6 @@ export default class GridAggregationLayer extends AggregationLayer {
     // aggregationBuffer.setData({data: aggregationData});
     this._updateResults({aggregationData, maxMinData, maxData, minData});
   }
-
-  // _updateCustomDimensions(props, dimensionUpdater) {
-  //   // Sub classes can update their custom dimensions
-  // }
 
   // Private
   _allocateResources(numRow, numCol) {
@@ -330,111 +277,6 @@ export default class GridAggregationLayer extends AggregationLayer {
       this.setState({getValue: getValueFunc(props.aggregation, props.getWeight)});
     }
   }
-
-  // _needsReProjectPoints(oldProps, props, changeFlags) {
-  //   return (
-  //     this._getCellSize(oldProps) !== this._getCellSize(props) ||
-  //     this._getAggregator(oldProps) !== this._getAggregator(props) ||
-  //     (changeFlags.updateTriggersChanged &&
-  //       (changeFlags.updateTriggersChanged.all || changeFlags.updateTriggersChanged.getPosition))
-  //   );
-  // }
-  //
-  // getDimensionUpdaters({key, accessor, pickingInfo, getBins, getDomain, getScaleFunc, nullValue}) {
-  //   return {
-  //     key,
-  //     accessor,
-  //     pickingInfo,
-  //     getBins: Object.assign({updater: this.getDimensionSortedBins}, getBins),
-  //     getDomain: getDomain && Object.assign({updater: this.getDimensionValueDomain}, getDomain),
-  //     getScaleFunc: getScaleFunc && Object.assign({updater: this.getDimensionScale}, getScaleFunc),
-  //     attributeAccessor: this.getSubLayerDimensionAttribute(key, nullValue)
-  //   };
-  // }
-  //
-  // needUpdateDimensionStep(dimensionStep, oldProps, props, changeFlags) {
-  //   // whether need to update current dimension step
-  //   // dimension step is the value, domain, scaleFunction of each dimension
-  //   // each step is an object with properties links to layer prop and whether the prop is
-  //   // controlled by updateTriggers
-  //   // getBins: {
-  //   //   value: {
-  //   //     prop: 'getElevationValue',
-  //   //     updateTrigger: 'getElevationValue'
-  //   //   },
-  //   //   weight: {
-  //   //     prop: 'getElevationWeight',
-  //   //     updateTrigger: 'getElevationWeight'
-  //   //   },
-  //   //   aggregation: {
-  //   //     prop: 'elevationAggregation'
-  //   //   }
-  //   // }
-  //   return Object.values(dimensionStep.triggers).some(item => {
-  //     if (item.updateTrigger) {
-  //       // check based on updateTriggers change first
-  //       return (
-  //         changeFlags.updateTriggersChanged &&
-  //         (changeFlags.updateTriggersChanged.all ||
-  //           changeFlags.updateTriggersChanged[item.updateTrigger])
-  //       );
-  //     }
-  //     // fallback to direct comparison
-  //     return oldProps[item.prop] !== props[item.prop];
-  //   });
-  // }
-  //
-  // getDimensionChanges(oldProps, props, changeFlags) {
-  //   // const {dimensionUpdaters} = this.state;
-  //   const updaters = [];
-  //
-  //   // get dimension to be updated
-  //   for (const key in this.dimensionUpdaters) {
-  //     // return the first triggered updater for each dimension
-  //     const needUpdate = dimensionSteps.find(step =>
-  //       this.needUpdateDimensionStep(
-  //         this.dimensionUpdaters[key][step],
-  //         oldProps,
-  //         props,
-  //         changeFlags
-  //       )
-  //     );
-  //
-  //     if (needUpdate) {
-  //       updaters.push(
-  //         this.dimensionUpdaters[key][needUpdate].updater.bind(
-  //           this,
-  //           props,
-  //           this.dimensionUpdaters[key]
-  //         )
-  //       );
-  //     }
-  //   }
-  //
-  //   return updaters.length ? updaters : null;
-  // }
-  //
-  // // Update private state.dimensions
-  // setDimensionState(key, updateObject) {
-  //   this.setState({
-  //     dimensions: Object.assign({}, this.state.dimensions, {
-  //       [key]: Object.assign({}, this.state.dimensions[key], updateObject)
-  //     })
-  //   });
-  // }
-  //
-  // _addDimension(dimensions = []) {
-  //   dimensions.forEach(dimension => {
-  //     const {key} = dimension;
-  //     this.dimensionUpdaters[key] = this.getDimensionUpdaters(dimension);
-  //     this.state.dimensions[key] = {
-  //       getValue: null,
-  //       domain: null,
-  //       sortedBins: null,
-  //       scaleFunc: nop
-  //     };
-  //   });
-  // }
 
   _updateShaders(shaders) {
     this.state.gpuGridAggregator.updateShaders(shaders);
