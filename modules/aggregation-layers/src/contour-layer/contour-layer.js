@@ -191,14 +191,13 @@ export default class ContourLayer extends GridAggregationLayer {
     return thresholds.some((_, i) => !equals(thresholds[i], oldThresholds[i]));
   }
 
-  _updateGridParams(opts) {
+  _updateAggregationFlags(opts) {
     const cellSizeChanged = opts.oldProps.cellSize !== opts.props.cellSize;
-    const aggregationChanged = opts.oldProps.gpuAggregation !== opts.props.gpuAggregation;
     const {dataChanged} = this.state;
     this.setState({
       cellSizeChanged,
       cellSize: opts.props.cellSize,
-      needsReProjection: dataChanged || cellSizeChanged || aggregationChanged
+      needsReProjection: dataChanged || cellSizeChanged
     });
   }
 

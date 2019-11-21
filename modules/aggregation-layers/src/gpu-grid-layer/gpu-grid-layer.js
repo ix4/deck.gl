@@ -254,7 +254,7 @@ export default class GPUGridLayer extends GridAggregationLayer {
     }
   }
 
-  _updateGridParams(opts) {
+  _updateAggregationFlags(opts) {
     const cellSizeChanged = opts.oldProps.cellSize !== opts.props.cellSize;
     const {dataChanged} = this.state;
     this.setState({

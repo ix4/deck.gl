@@ -162,14 +162,13 @@ export default class ScreenGridLayer extends GridAggregationLayer {
   }
 
 
-  _updateGridParams(opts) {
+  _updateAggregationFlags(opts) {
     const cellSizeChanged = opts.oldProps.cellSizePixels !== opts.props.cellSizePixels;
-    const aggregationChanged = opts.oldProps.gpuAggregation !== opts.props.gpuAggregation;
     const {dataChanged} = this.state;
     this.setState({
       cellSizeChanged,
       cellSize: opts.props.cellSizePixels,
-      needsReProjection: dataChanged || cellSizeChanged || opts.changeFlags.viewportChanged || aggregationChanged
+      needsReProjection: dataChanged || cellSizeChanged || opts.changeFlags.viewportChanged
     });
   }
 

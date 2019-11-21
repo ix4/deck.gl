@@ -43,15 +43,14 @@ export default class GridAggregationLayer extends AggregationLayer {
   }
 
   updateState(opts) {
-    const {gpuAggregation} = opts.props;
     // will get new attributes
     super.updateState(opts);
 
     // update bounding box and cellSize
-    this._updateGridState(opts);
+    this._updateAggregationState(opts);
 
     let aggregationDirty = false;
-    const {needsReProjection} = this.state;
+    const {needsReProjection, gpuAggregation} = this.state;
     const needsReAggregation = this._isAggregationDirty(opts);
     const vertexCount = this.getNumInstances();
     if (vertexCount <= 0) {
@@ -84,8 +83,24 @@ export default class GridAggregationLayer extends AggregationLayer {
 
   // Private
 
-  _updateGridState(opts) {
-    this._updateGridParams(opts);
+  _updateAggregationState(opts) {
+    if (opts.oldProps.gpuAggregation !== opts.props.gpuAggregation) {
+      let gpuAggregation = opts.props.gpuAggregation;
+      if (gpuAggregation && !GPUGridAggregator.isSupported(this.context.gl)) {
+        log.warn('GPU Grid Aggregation not supported, falling back to CPU')();
+        gpuAggregation = false;
+      }
+      // Consider switching between CPU and GPU aggregation as data changed as it requires
+      // re aggregation.
+      const dataChanged = this.state.dataChanged || this.state.gpuAggregation !== gpuAggregation;
+      this.setState({gpuAggregation, dataChanged});
+    }
+    this._updateAggregationFlags(opts);
+    this._updateProjectionParams(opts);
+  }
+
+// eslint-disable-next-line
+  _updateProjectionParams(opts) {
     const {viewport} = this.context;
     const {dataChanged, cellSizeChanged, screenSpaceAggregation} = this.state;
     if (dataChanged && !screenSpaceAggregation) {
@@ -130,7 +145,6 @@ export default class GridAggregationLayer extends AggregationLayer {
   }
 
   getAggregatedData(opts) {
-    const {gpuAggregation} = opts.props;
     const {
       cpuGridAggregator,
       gpuGridAggregator,
@@ -141,7 +155,8 @@ export default class GridAggregationLayer extends AggregationLayer {
       width,
       height,
       boundingBox,
-      projectPoints
+      projectPoints,
+      gpuAggregation
     } = this.state;
     const {props} = opts;
     const {viewport} = this.context;
@@ -249,7 +264,7 @@ export default class GridAggregationLayer extends AggregationLayer {
   }
 
   _updateAccessors(opts) {
-    if (opts.props.gpuAggregation) {
+    if (this.state.gpuAggregation) {
       this._updateWeightParams(opts);
     } else {
       this._updateGetValueFuncs(opts);
@@ -291,7 +306,7 @@ export default class GridAggregationLayer extends AggregationLayer {
     return {xOffset: cellSize, yOffset: cellSize};
   }
 
-  _updateGridParams(opts) {
+  _updateAggregationFlags(opts) {
     // Sublayers should implement this method.
     log.assert(false)();
   }
