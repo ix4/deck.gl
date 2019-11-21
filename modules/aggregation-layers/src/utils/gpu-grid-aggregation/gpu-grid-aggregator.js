@@ -861,13 +861,13 @@ export default class GPUGridAggregator {
       if (needMin || needMax) {
         if (needMin && needMax && combineMaxMin) {
           if (!maxMinFramebuffers[id]) {
-            texture = this._getMinMaxTexture(`${id}-maxMinTexture`);
+            texture = weights[id].maxMinTexture || this._getMinMaxTexture(`${id}-maxMinTexture`);
             maxMinFramebuffers[id] = getFramebuffer(this.gl, {id: `${id}-maxMinFb`, texture});
           }
         } else {
           if (needMin) {
             if (!minFramebuffers[id]) {
-              texture = this._getMinMaxTexture(`${id}-minTexture`);
+              texture = weights[id].minTexture || this._getMinMaxTexture(`${id}-minTexture`);
               minFramebuffers[id] = getFramebuffer(this.gl, {
                 id: `${id}-minFb`,
                 texture
@@ -876,7 +876,7 @@ export default class GPUGridAggregator {
           }
           if (needMax) {
             if (!maxFramebuffers[id]) {
-              texture = this._getMinMaxTexture(`${id}-maxTexture`);
+              texture = weights[id].maxTexture || this._getMinMaxTexture(`${id}-maxTexture`);
               maxFramebuffers[id] = getFramebuffer(this.gl, {
                 id: `${id}-maxFb`,
                 texture
