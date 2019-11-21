@@ -20,7 +20,6 @@
 
 import GL from '@luma.gl/constants';
 import {
-  Buffer,
   Model,
   Transform,
   FEATURES,
@@ -31,7 +30,6 @@ import {
   withParameters
 } from '@luma.gl/core';
 import {log, project64, mergeShaders} from '@deck.gl/core';
-import {worldToPixels} from '@math.gl/web-mercator';
 const {fp64ifyMatrix4} = fp64ShaderModule;
 
 import {
@@ -42,11 +40,9 @@ import {
   MAX_BLEND_EQUATION,
   MAX_MIN_BLEND_EQUATION,
   EQUATION_MAP,
-  ELEMENTCOUNT,
   DEFAULT_WEIGHT_PARAMS,
   IDENTITY_MATRIX,
   PIXEL_SIZE,
-  WEIGHT_SIZE
 } from './gpu-grid-aggregator-constants';
 import {AGGREGATION_OPERATION} from '../aggregation-operation-utils';
 
@@ -56,7 +52,7 @@ import AGGREGATE_TO_GRID_FS from './aggregate-to-grid-fs.glsl';
 import AGGREGATE_ALL_VS_FP64 from './aggregate-all-vs-64.glsl';
 import AGGREGATE_ALL_FS from './aggregate-all-fs.glsl';
 import TRANSFORM_MEAN_VS from './transform-mean-vs.glsl';
-import {getFloatTexture, getFramebuffer, getFloatArray} from './../resource-utils.js';
+import {getFloatTexture, getFramebuffer} from './../resource-utils.js';
 
 const BUFFER_NAMES = ['aggregationBuffer', 'maxMinBuffer', 'minBuffer', 'maxBuffer'];
 const ARRAY_BUFFER_MAP = {
@@ -329,293 +325,6 @@ export default class GPUGridAggregator {
     const numCol = Math.ceil(width / cellSize[0]);
     const numRow = Math.ceil(height / cellSize[1]);
     this.setState({numCol, numRow, windowSize: [width, height]});
-  }
-
-  // CPU Aggregation methods
-
-  // aggregated weight value to a cell
-  /* eslint-disable max-depth */
-  calculateAggregationData(opts) {
-    const {weights, results, cellIndex, posIndex, attributes} = opts;
-    for (const id in weights) {
-      const {size, operation} = weights[id];
-      // TODO - value might not exist (e.g. attribute transition)
-      const values = attributes[id].value;
-      const {aggregationData} = results[id];
-      for (let sizeIndex = 0; sizeIndex < size; sizeIndex++) {
-        const cellElementIndex = cellIndex + sizeIndex;
-        const weightComponent = values[posIndex * WEIGHT_SIZE + sizeIndex];
-
-        if (aggregationData[cellIndex + 3] === 0) {
-          // if the cell is getting update the first time, set the value directly.
-          aggregationData[cellElementIndex] = weightComponent;
-        } else {
-          switch (operation) {
-            case AGGREGATION_OPERATION.SUM:
-            case AGGREGATION_OPERATION.MEAN:
-              aggregationData[cellElementIndex] += weightComponent;
-              // MEAN value is calculated during 'calculateMeanMaxMinData'
-              break;
-            case AGGREGATION_OPERATION.MIN:
-              aggregationData[cellElementIndex] = Math.min(
-                aggregationData[cellElementIndex],
-                weightComponent
-              );
-              break;
-            case AGGREGATION_OPERATION.MAX:
-              aggregationData[cellElementIndex] = Math.max(
-                aggregationData[cellElementIndex],
-                weightComponent
-              );
-              break;
-            default:
-              // Not a valid operation enum.
-              log.assert(false);
-              break;
-          }
-        }
-      }
-
-      // Track the count per grid-cell
-      aggregationData[cellIndex + 3]++;
-    }
-  }
-
-  /* eslint-disable max-depth, complexity */
-  calculateMeanMaxMinData(opts) {
-    const {validCellIndices, results, weights} = opts;
-
-    // collect max/min values
-    validCellIndices.forEach(cellIndex => {
-      for (const id in results) {
-        const {size, needMin, needMax, operation} = weights[id];
-        const {aggregationData, minData, maxData, maxMinData} = results[id];
-        const calculateMinMax = needMin || needMax;
-        const calculateMean = operation === AGGREGATION_OPERATION.MEAN;
-        const combineMaxMin = needMin && needMax && weights[id].combineMaxMin;
-        const count = aggregationData[cellIndex + ELEMENTCOUNT - 1];
-        for (
-          let sizeIndex = 0;
-          sizeIndex < size && (calculateMinMax || calculateMean);
-          sizeIndex++
-        ) {
-          const cellElementIndex = cellIndex + sizeIndex;
-          let weight = aggregationData[cellElementIndex];
-          if (calculateMean) {
-            aggregationData[cellElementIndex] /= count;
-            weight = aggregationData[cellElementIndex];
-          }
-          if (combineMaxMin) {
-            // use RGB for max values for 3 weights.
-            maxMinData[sizeIndex] = Math.max(maxMinData[sizeIndex], weight);
-          } else {
-            if (needMin) {
-              minData[sizeIndex] = Math.min(minData[sizeIndex], weight);
-            }
-            if (needMax) {
-              maxData[sizeIndex] = Math.max(maxData[sizeIndex], weight);
-            }
-          }
-        }
-        // update total aggregation values.
-        if (combineMaxMin) {
-          // Use Alpha channel to store total min value for weight#0
-          maxMinData[ELEMENTCOUNT - 1] = Math.min(
-            maxMinData[ELEMENTCOUNT - 1],
-            aggregationData[cellIndex + 0]
-          );
-        } else {
-          // Use Alpha channel to store total counts.
-          if (needMin) {
-            minData[ELEMENTCOUNT - 1] += count;
-          }
-          if (needMax) {
-            maxData[ELEMENTCOUNT - 1] += count;
-          }
-        }
-      }
-    });
-  }
-  /* eslint-enable max-depth */
-
-  initCPUResults(opts) {
-    const weights = opts.weights || this.state.weights;
-    const {numCol, numRow} = this.state;
-    const results = {};
-    // setup results object
-    for (const id in weights) {
-      let {aggregationData, minData, maxData, maxMinData} = weights[id];
-      const {needMin, needMax} = weights[id];
-      const combineMaxMin = needMin && needMax && weights[id].combineMaxMin;
-
-      const aggregationSize = numCol * numRow * ELEMENTCOUNT;
-      aggregationData = getFloatArray(aggregationData, aggregationSize);
-      if (combineMaxMin) {
-        maxMinData = getFloatArray(maxMinData, ELEMENTCOUNT);
-        // RGB for max value
-        maxMinData.fill(-Infinity, 0, ELEMENTCOUNT - 1);
-        // Alpha for min value
-        maxMinData[ELEMENTCOUNT - 1] = Infinity;
-      } else {
-        // RGB for min/max values
-        // Alpha for total count
-        if (needMin) {
-          minData = getFloatArray(minData, ELEMENTCOUNT, Infinity);
-          minData[ELEMENTCOUNT - 1] = 0;
-        }
-        if (needMax) {
-          maxData = getFloatArray(maxData, ELEMENTCOUNT, -Infinity);
-          maxData[ELEMENTCOUNT - 1] = 0;
-        }
-      }
-      results[id] = Object.assign({}, weights[id], {
-        aggregationData,
-        minData,
-        maxData,
-        maxMinData
-      });
-    }
-    return results;
-  }
-
-  /* eslint-disable max-statements */
-  runAggregationOnCPU(opts) {
-    log.assert(false);
-    const {
-      attributes,
-      vertexCount,
-      cellSize,
-      gridTransformMatrix,
-      moduleSettings,
-      projectPoints
-    } = opts;
-    let {weights} = opts;
-    const {numCol, numRow} = this.state;
-    let {gridPositions} = this.state;
-    const {viewport} = moduleSettings;
-    const results = this.initCPUResults(opts);
-    // screen space or world space projection required
-    const gridTransformRequired = !gridPositions || shouldTransformToGrid(opts);
-    const pos = [0, 0, 0];
-
-    log.assert(gridTransformRequired || opts.changeFlags.cellSizeChanged);
-
-    if (gridTransformRequired) {
-      gridPositions = new Float64Array(vertexCount * 2);
-      this.setState({gridPositions});
-    } else {
-      gridPositions = this.state.gridPositions;
-      weights = this.state.weights;
-    }
-
-    const validCellIndices = new Set();
-    const positions = attributes.positions.value;
-    const posSize = 3;
-    for (let posIndex = 0; posIndex < vertexCount; posIndex++) {
-      let x;
-      let y;
-      if (gridTransformRequired) {
-        pos[0] = positions[posIndex * posSize];
-        pos[1] = positions[posIndex * posSize + 1];
-        if (projectPoints) {
-          [x, y] = viewport.project(pos);
-        } else {
-          [x, y] = worldToPixels(pos, gridTransformMatrix);
-        }
-        gridPositions[posIndex * 2] = x;
-        gridPositions[posIndex * 2 + 1] = y;
-      } else {
-        x = gridPositions[posIndex * 2];
-        y = gridPositions[posIndex * 2 + 1];
-      }
-
-      const colId = Math.floor(x / cellSize[0]);
-      const rowId = Math.floor(y / cellSize[1]);
-      if (colId >= 0 && colId < numCol && rowId >= 0 && rowId < numRow) {
-        const cellIndex = (colId + rowId * numCol) * ELEMENTCOUNT;
-        validCellIndices.add(cellIndex);
-        this.calculateAggregationData({weights, results, cellIndex, posIndex, attributes});
-      }
-    }
-
-    this.calculateMeanMaxMinData({validCellIndices, results, weights});
-
-    // Update buffer objects.
-    this.updateAggregationBuffers(opts, results);
-
-    this.setState({results});
-    return results;
-  }
-  /* eslint-disable max-statements */
-
-  _uploadResultsToGPU({gl, bufferName, textureName, id, data, result}) {
-    const {resources} = this.state;
-    const resourceName = `cpu-result-${id}-${bufferName}`;
-    result[bufferName] = result[bufferName] || resources[resourceName];
-    if (result[bufferName]) {
-      result[bufferName].setData({data});
-    } else {
-      // save resource for garbage collection
-      resources[resourceName] = new Buffer(gl, data);
-      result[bufferName] = resources[resourceName];
-    }
-
-    // Upload result to a texture
-    if (textureName) {
-      const texture = this._getMinMaxTexture(`${id}-textureName`);
-      texture.setImageData({data});
-      result[textureName] = texture;
-    }
-  }
-
-  updateAggregationBuffers(opts, results) {
-    if (!opts.createBufferObjects) {
-      return;
-    }
-    const weights = opts.weights || this.state.weights;
-    for (const id in results) {
-      const {aggregationData, minData, maxData, maxMinData} = results[id];
-      const {needMin, needMax} = weights[id];
-      const combineMaxMin = needMin && needMax && weights[id].combineMaxMin;
-      this._uploadResultsToGPU({
-        gl: this.gl,
-        bufferName: 'aggregationBuffer',
-        id,
-        data: aggregationData,
-        result: results[id]
-      });
-      if (combineMaxMin) {
-        this._uploadResultsToGPU({
-          gl: this.gl,
-          bufferName: 'maxMinBuffer',
-          textureName: 'maxMinTexture',
-          id,
-          data: maxMinData,
-          result: results[id]
-        });
-      } else {
-        if (needMin) {
-          this._uploadResultsToGPU({
-            gl: this.gl,
-            bufferName: 'minBuffer',
-            textureName: 'minTexture',
-            id,
-            data: minData,
-            result: results[id]
-          });
-        }
-        if (needMax) {
-          this._uploadResultsToGPU({
-            gl: this.gl,
-            bufferName: 'maxBuffer',
-            textureName: 'maxTexture',
-            id,
-            data: maxData,
-            result: results[id]
-          });
-        }
-      }
-    }
   }
 
   // GPU Aggregation methods
@@ -963,9 +672,7 @@ export default class GPUGridAggregator {
     this.gridAggregationModel.setVertexCount(vertexCount);
     this.gridAggregationModel.setAttributes(attributes);
 
-    // if (changeFlags.cellSizeChanged || changeFlags.viewportChanged) {
-      this.allAggregationModel.setInstanceCount(numCol * numRow);
-    //}
+    this.allAggregationModel.setInstanceCount(numCol * numRow);
   }
   /* eslint-enable max-statements */
 
@@ -991,18 +698,6 @@ function deleteResources(resources) {
       obj[name].delete();
     }
   });
-}
-
-function shouldTransformToGrid(opts) {
-  log.assert(false);
-  const {projectPoints, changeFlags} = opts;
-  if (
-    changeFlags.dataChanged ||
-    (projectPoints && changeFlags.viewportChanged) // world space aggregation (GridLayer) doesn't change when viewport is changed.
-  ) {
-    return true;
-  }
-  return false;
 }
 
 function getAggregationModel(gl, shaderOptions, fp64 = false) {
