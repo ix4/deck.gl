@@ -1314,7 +1314,7 @@ export const TEST_CASES = [
         data: dataSamples.points.slice(0, 50),
         opacity: 0.8,
         fontFamily: 'Arial',
-        transparentColor: [0.0, 255.0, 0.0, 200.0],
+        backgroundColor: [0.0, 255.0, 0.0, 200.0],
         getText: x => `${x.PLACEMENT}-${x.YR_INSTALLED}`,
         getPosition: x => x.COORDINATES,
         getColor: x => [153, 0, 0],
