@@ -62,7 +62,7 @@ export default class PolygonLayer extends CompositeLayer {
     };
 
     if (this.props.getLineDashArray) {
-      log.removed('getLineDashArray', 'PathExtension')();
+      log.removed('getLineDashArray', 'PathStyleExtension')();
     }
   }
 
